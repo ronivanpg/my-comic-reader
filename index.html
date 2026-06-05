@@ -10,140 +10,527 @@
     <style>
         :root {
             --bg-deep: #000000;
-            --glass-bg: rgba(30, 30, 30, 0.7);
+            --glass-bg: rgba(30, 30, 30, 0.6);
+            --glass-card: rgba(255, 255, 255, 0.06);
             --glass-border: rgba(255, 255, 255, 0.1);
             --accent: #ffffff;
             --text-main: #ffffff;
             --text-muted: #a0a0a0;
+            --danger: #ff4a5a;
         }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+        * { 
+            box-sizing: border-box; 
+            margin: 0; 
+            padding: 0; 
+            user-select: none; 
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent; 
+        }
 
-        body { 
+        body, html { 
             background: var(--bg-deep); 
             color: var(--text-main); 
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             overflow: hidden; 
-            height: 100vh;
+            height: 100%;
+            width: 100%;
         }
 
-        /* Viewport */
-        #viewer-container { width: 100%; height: 100%; position: relative; display: flex; align-items: center; justify-content: center; }
+        #viewer-container { 
+            width: 100%; 
+            height: 100%; 
+            position: relative; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+        }
         
         #comic-page { 
-            max-width: 100%; max-height: 100%; object-fit: contain; 
-            transition: transform 0.4s cubic-bezier(0.2, 0, 0, 1);
+            max-width: 100%; 
+            max-height: 100%; 
+            object-fit: contain; 
+            transition: transform 0.2s ease;
         }
 
-        /* Glass Floating Navigation */
+        .tap-zone {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            width: 35%;
+            z-index: 10;
+        }
+        #left-zone { left: 0; }
+        #right-zone { right: 0; }
+
+        #progress-timeline {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 4px;
+            width: 0%;
+            background: var(--accent);
+            z-index: 15;
+            transition: width 0.2s ease;
+        }
+
         .bottom-pill-nav {
-            position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%);
+            position: absolute; 
+            bottom: 32px; 
+            left: 50%; 
+            transform: translateX(-50%);
             background: var(--glass-bg);
-            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-            padding: 12px 28px; border-radius: 40px;
-            display: flex; gap: 24px; border: 1px solid var(--glass-border);
-            z-index: 50; transition: opacity 0.3s;
+            backdrop-filter: blur(25px); 
+            -webkit-backdrop-filter: blur(25px);
+            padding: 14px 28px; 
+            border-radius: 40px;
+            display: flex; 
+            align-items: center;
+            gap: 24px; 
+            border: 1px solid var(--glass-border);
+            z-index: 20; 
+            box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+            transition: transform 0.4s cubic-bezier(0.2, 0, 0, 1), opacity 0.3s ease;
         }
 
-        .nav-btn { background: none; border: none; color: var(--text-main); font-weight: 600; font-size: 13px; }
+        .bottom-pill-nav.hidden {
+            transform: translate(-50%, 120px);
+            opacity: 0;
+        }
 
-        /* The Expansion Overlay (Material You Style) */
+        .nav-btn { 
+            background: none; 
+            border: none; 
+            color: var(--text-main); 
+            font-weight: 600; 
+            font-size: 14px; 
+            cursor: pointer;
+        }
+
         #transition-overlay {
-            position: fixed; inset: 0; background: var(--bg-deep);
-            z-index: 100; transform: scale(0); border-radius: 50%;
-            transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+            position: fixed; 
+            inset: 0; 
+            background: var(--bg-deep);
+            z-index: 100; 
+            transform: scale(0); 
+            border-radius: 50%;
+            transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
             pointer-events: none;
         }
         #transition-overlay.expand { transform: scale(3); border-radius: 0; }
 
-        /* Shelf UI */
+        #loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            z-index: 150;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+        #loading-overlay.active { opacity: 1; pointer-events: all; }
+
+        .spinner {
+            width: 44px;
+            height: 44px;
+            border: 4px solid rgba(255,255,255,0.1);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
         .shelf-overlay {
-            position: fixed; inset: 0; background: var(--bg-deep);
-            z-index: 40; transform: translateY(100%);
-            transition: transform 0.5s cubic-bezier(0.2, 0, 0, 1);
-            padding: 40px 20px;
+            position: fixed; 
+            inset: 0; 
+            background: var(--bg-deep);
+            z-index: 40; 
+            transform: translateY(100%);
+            transition: transform 0.4s cubic-bezier(0.2, 0, 0, 1);
+            padding: 30px 24px;
+            display: flex;
+            flex-direction: column;
         }
         .shelf-overlay.open { transform: translateY(0); }
 
-        .shelf-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .shelf-header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 24px; 
+            flex-shrink: 0;
+        }
         
-        /* Glass Cards */
-        .comic-row-item {
-            background: rgba(255,255,255,0.05);
-            backdrop-filter: blur(10px);
-            padding: 20px; border-radius: 24px;
-            margin-bottom: 16px; border: 1px solid var(--glass-border);
-            display: flex; align-items: center;
+        .add-btn {
+            background: var(--accent); 
+            color: #000000;
+            padding: 18px; 
+            border-radius: 24px; 
+            text-align: center;
+            font-weight: 700; 
+            font-size: 15px;
+            margin-bottom: 24px; 
+            cursor: pointer;
+            display: block;
+            flex-shrink: 0;
         }
 
-        .add-btn {
-            background: var(--accent); color: #000;
-            padding: 16px; border-radius: 20px; text-align: center;
-            font-weight: 700; margin-bottom: 20px; cursor: pointer;
+        .comic-list-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .comic-row-item {
+            background: var(--glass-card);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 18px 20px; 
+            border-radius: 24px;
+            border: 1px solid var(--glass-border);
+            display: flex; 
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .comic-info-click {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            overflow: hidden;
+            margin-right: 12px;
+            cursor: pointer;
+        }
+
+        .comic-row-title {
+            font-size: 15px;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .bookmark-badge {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .delete-btn {
+            background: none;
+            border: none;
+            color: var(--danger);
+            font-size: 18px;
+            padding: 8px;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
 
     <div id="transition-overlay"></div>
+    
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <p id="loading-text" style="font-size: 14px; font-weight: 500; color: var(--text-muted);">Processing...</p>
+    </div>
 
     <div id="viewer-container">
-        <div id="left-zone" class="tap-zone" style="position:absolute; left:0; height:100%; width:25%; z-index:10;"></div>
-        <div id="right-zone" class="tap-zone" style="position:absolute; right:0; height:100%; width:25%; z-index:10;"></div>
-        <img id="comic-page" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><text x='50%' y='50%' fill='%23333' text-anchor='middle'>Add a comic</text></svg>">
+        <div id="left-zone" class="tap-zone"></div>
+        <div id="right-zone" class="tap-zone"></div>
+        <img id="comic-page" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100%' height='100%' fill='%23000000'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%23444444' font-family='sans-serif' font-size='4'>Vault Empty. Open Library to add files.</text></svg>" alt="Comic Page">
+        <div id="progress-timeline"></div>
     </div>
 
     <div class="bottom-pill-nav" id="main-nav">
         <button class="nav-btn" onclick="openShelf()">Library</button>
         <span id="page-indicator" style="font-size: 13px; font-weight: bold; opacity: 0.8;">0 / 0</span>
+        <button class="nav-btn" onclick="toggleNavVisibility()">Hide</button>
     </div>
 
     <div class="shelf-overlay" id="library-shelf">
         <div class="shelf-header">
-            <h1 style="font-size: 28px;">Comic Vault</h1>
-            <button class="nav-btn" onclick="closeShelf()">Close</button>
+            <h1 style="font-size: 26px; font-weight: 700;">Comic Vault</h1>
+            <button class="nav-btn" style="color: var(--text-muted);" onclick="closeShelf()">Close</button>
         </div>
         
-        <label for="hidden-file-input" class="add-btn">Import Comics</label>
+        <label for="hidden-file-input" class="add-btn">➕ Add Volume to Vault</label>
         <input type="file" id="hidden-file-input" accept=".cbz" multiple onchange="handleMultipleFiles(this)" style="display:none">
         
-        <div id="comic-list" style="overflow-y:auto; height: 70vh;"></div>
+        <div class="comic-list-container" id="comic-list"></div>
     </div>
 
     <script>
-        let currentComicData = { name: "", pages: [], currentIndex: 0 };
+        // High-volume engine data states
+        let currentComicEngine = {
+            name: "",
+            zipInstance: null,
+            fileEntries: [],
+            currentIndex: 0,
+            currentBlobUrl: null
+        };
+
+        let isZoomed = false;
+        let lastTapTime = 0;
         let db = null;
 
-        // DB Setup
+        // Secure IndexedDB Engine Initialization
         const dbRequest = indexedDB.open("ComicVaultSecureStorage", 1);
-        dbRequest.onupgradeneeded = (e) => { e.target.result.createObjectStore("vault", { keyPath: "name" }); };
-        dbRequest.onsuccess = (e) => { db = e.target.result; renderLibraryList(); };
+        dbRequest.onupgradeneeded = (e) => {
+            let database = e.target.result;
+            if (!database.objectStoreNames.contains("vault")) {
+                database.createObjectStore("vault", { keyPath: "name" });
+            }
+        };
+        dbRequest.onsuccess = (e) => {
+            db = e.target.result;
+            renderLibraryList();
+        };
 
         function openShelf() { document.getElementById('library-shelf').classList.add('open'); }
         function closeShelf() { document.getElementById('library-shelf').classList.remove('open'); }
+        function toggleNavVisibility() { document.getElementById('main-nav').classList.add('hidden'); }
 
-        // Material You Style Transition
-        function triggerExpansion(callback) {
+        document.getElementById('viewer-container').addEventListener('click', (e) => {
+            if(e.target.className !== 'tap-zone') {
+                document.getElementById('main-nav').classList.remove('hidden');
+            }
+        });
+
+        function showSpinner(msg) {
+            document.getElementById('loading-text').innerText = msg;
+            document.getElementById('loading-overlay').classList.add('active');
+        }
+        function hideSpinner() {
+            document.getElementById('loading-overlay').classList.remove('active');
+        }
+
+        // Handles massive multi-gigabyte browser allocation streaming streams smoothly
+        function handleMultipleFiles(input) {
+            const files = Array.from(input.files).filter(f => /\.(cbz)$/i.test(f.name));
+            if (files.length === 0) return;
+
+            showSpinner(`Vaulting large volume archives... (0/${files.length})`);
+
+            let currentIndex = 0;
+
+            function processNextFile() {
+                if (currentIndex >= files.length) {
+                    input.value = "";
+                    hideSpinner();
+                    renderLibraryList();
+                    return;
+                }
+
+                const file = files[currentIndex];
+                showSpinner(`Writing to local storage:\n${file.name}\n(${(file.size / (1024*1024)).toFixed(1)} MB)`);
+
+                const transaction = db.transaction(["vault"], "readwrite");
+                const store = transaction.objectStore("vault");
+
+                const record = {
+                    name: file.name,
+                    fileBlob: file,
+                    savedPage: 0
+                };
+
+                const request = store.put(record);
+
+                request.onsuccess = () => {
+                    currentIndex++;
+                    processNextFile();
+                };
+
+                request.onerror = (err) => {
+                    hideSpinner();
+                    alert("Disk quota exceeded or write failure error: " + err.target.error.name);
+                };
+            }
+
+            processNextFile();
+        }
+
+        function renderLibraryList() {
+            const listContainer = document.getElementById("comic-list");
+            listContainer.innerHTML = "";
+            if (!db) return;
+
+            const transaction = db.transaction(["vault"], "readonly");
+            const store = transaction.objectStore("vault");
+            const request = store.getAll();
+
+            request.onsuccess = () => {
+                const books = request.result;
+                if (books.length === 0) {
+                    listContainer.innerHTML = `<div style="text-align:center; opacity:0.3; margin-top:40px; font-size:14px;">Vault is empty.<br>Import heavy volumes to read completely offline.</div>`;
+                    return;
+                }
+
+                books.forEach(book => {
+                    const savedIndex = localStorage.getItem(`bookmark_${book.name}`);
+                    const displayProgress = savedIndex ? `Page ${parseInt(savedIndex, 10) + 1}` : 'Unread';
+
+                    const row = document.createElement("div");
+                    row.className = "comic-row-item";
+                    row.innerHTML = `
+                        <div class="comic-info-click" onclick="bootComicFromVault('${book.name.replace(/'/g, "\\'")}')">
+                            <span class="comic-row-title">${book.name}</span>
+                            <span class="bookmark-badge">${displayProgress}</span>
+                        </div>
+                        <button class="delete-btn" onclick="deleteComicFromVault('${book.name.replace(/'/g, "\\'")}', event)">🗑️</button>
+                    `;
+                    listContainer.appendChild(row);
+                });
+            };
+        }
+
+        // Heavy File Index-only Loader
+        function bootComicFromVault(filename) {
             const overlay = document.getElementById('transition-overlay');
             overlay.classList.add('expand');
+
             setTimeout(() => {
-                callback();
-                overlay.classList.remove('expand');
-            }, 500);
+                closeShelf();
+                showSpinner("Parsing archive mapping layout...");
+
+                const transaction = db.transaction(["vault"], "readonly");
+                const store = transaction.objectStore("vault");
+                const request = store.get(filename);
+
+                request.onsuccess = async () => {
+                    if (!request.result) { overlay.classList.remove('expand'); hideSpinner(); return; }
+                    
+                    const file = request.result.fileBlob;
+                    
+                    // Cleanup previous engine instance pointers entirely
+                    if (currentComicEngine.currentBlobUrl) {
+                        URL.revokeObjectURL(currentComicEngine.currentBlobUrl);
+                    }
+                    
+                    currentComicEngine.name = filename;
+                    currentComicEngine.fileEntries = [];
+                    currentComicEngine.currentBlobUrl = null;
+
+                    try {
+                        // JSZip.loadAsync reads ONLY the central directory metadata zip block, NOT all pages.
+                        currentComicEngine.zipInstance = await JSZip.loadAsync(file);
+
+                        currentComicEngine.zipInstance.forEach((relativePath, zipEntry) => {
+                            if (!zipEntry.dir && /\.(jfif|jpeg|jpg|png|webp)$/i.test(relativePath)) {
+                                currentComicEngine.fileEntries.push(zipEntry);
+                            }
+                        });
+
+                        currentComicEngine.fileEntries.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true, sensitivity: 'base'}));
+
+                        const savedPage = localStorage.getItem(`bookmark_${filename}`);
+                        currentComicEngine.currentIndex = savedPage ? parseInt(savedPage, 10) : 0;
+
+                        // Safety check if index out of bounds
+                        if (currentComicEngine.currentIndex >= currentComicEngine.fileEntries.length) {
+                            currentComicEngine.currentIndex = 0;
+                        }
+
+                        await renderPage();
+                        overlay.classList.remove('expand');
+                        hideSpinner();
+                    } catch (err) {
+                        overlay.classList.remove('expand');
+                        hideSpinner();
+                        alert("Error structural parsing map check: " + err.message);
+                    }
+                };
+            }, 400); 
         }
 
-        function bootComicFromVault(filename) {
-            triggerExpansion(() => {
-                closeShelf();
-                // ... (Logic to load comic same as before) ...
-                console.log("Loading " + filename);
-                // After loading:
-                renderPage();
-            });
+        // On-Demand Single Page RAM Extractor Engine
+        async function renderPage() {
+            if (currentComicEngine.fileEntries.length === 0) return;
+            
+            const imgElement = document.getElementById('comic-page');
+            const totalPages = currentComicEngine.fileEntries.length;
+            const currentNumber = currentComicEngine.currentIndex + 1;
+
+            // 1. Immediately revoke the previously active image blob to fully flush RAM cache
+            if (currentComicEngine.currentBlobUrl) {
+                URL.revokeObjectURL(currentComicEngine.currentBlobUrl);
+            }
+
+            try {
+                // 2. Unpack ONLY the specific page entry right now
+                const activeEntry = currentComicEngine.fileEntries[currentComicEngine.currentIndex];
+                const freshBlob = await activeEntry.async("blob");
+                
+                // 3. Link resource mapping
+                currentComicEngine.currentBlobUrl = URL.createObjectURL(freshBlob);
+                imgElement.src = currentComicEngine.currentBlobUrl;
+
+                // 4. Paint analytics interface metrics
+                document.getElementById('page-indicator').innerText = `${currentNumber} / ${totalPages}`;
+                const progressPercent = (currentNumber / totalPages) * 100;
+                document.getElementById('progress-timeline').style.width = `${progressPercent}%`;
+
+                localStorage.setItem(`bookmark_${currentComicEngine.name}`, currentComicEngine.currentIndex);
+            } catch(e) {
+                console.error("Page extraction error: ", e);
+            }
         }
-        
-        // ... (Include same renderLibraryList, handleMultipleFiles, and renderPage functions as before) ...
-        // Note: For brevity, I've truncated the redundant logic, but apply your existing logic here.
+
+        function deleteComicFromVault(filename, event) {
+            event.stopPropagation();
+            if (!confirm(`Wipe volume data entirely from physical device storage?`)) return;
+
+            const transaction = db.transaction(["vault"], "readwrite");
+            const store = transaction.objectStore("vault");
+            store.delete(filename);
+
+            transaction.oncomplete = () => {
+                localStorage.removeItem(`bookmark_${filename}`);
+                if (currentComicEngine.name === filename) {
+                    location.reload();
+                } else {
+                    renderLibraryList();
+                }
+            };
+        }
+
+        // Page turns remain instantaneous because extracting a single compressed image takes micro-seconds
+        document.getElementById('right-zone').addEventListener('click', () => {
+            if (currentComicEngine.currentIndex < currentComicEngine.fileEntries.length - 1) {
+                currentComicEngine.currentIndex++;
+                renderPage();
+            }
+        });
+
+        document.getElementById('left-zone').addEventListener('click', () => {
+            if (currentComicEngine.currentIndex > 0) {
+                currentComicEngine.currentIndex--;
+                renderPage();
+            }
+        });
+
+        document.getElementById('viewer-container').addEventListener('click', (e) => {
+            if(e.target.id === 'comic-page') {
+                const currentTime = new Date().getTime();
+                const tapLength = currentTime - lastTapTime;
+                if (tapLength < 300 && tapLength > 0) {
+                    const img = document.getElementById('comic-page');
+                    img.style.transform = !isZoomed ? 'scale(1.8)' : 'scale(1)';
+                    isZoomed = !isZoomed;
+                    e.preventDefault();
+                }
+                lastTapTime = currentTime;
+            }
+        });
     </script>
 </body>
 </html>
