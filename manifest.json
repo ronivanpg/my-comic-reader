@@ -1,17 +1,23 @@
 {
-  "name": "Nexus Comic Reader",
-  "short_name": "NexusReader",
-  "start_url": "index.html",
-  "display": "standalone",
-  "background_color": "#071e26",
-  "theme-color": "#071e26",
-  "orientation": "portrait",
+  "short_name": "Comic Vault",
+  "name": "Comic Vault",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/3145/3145121.png",
-      "sizes": "512x512",
+      "src": "icon.png",
       "type": "image/png",
-      "purpose": "any maskable"
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "icon.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
     }
-  ]
+  ],
+  "start_url": "index.html",
+  "background_color": "#071e26",
+  "theme_color": "#071e26",
+  "display": "standalone",
+  "orientation": "portrait"
 }
