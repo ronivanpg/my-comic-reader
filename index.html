@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Nexus Comic Reader</title>
+    <title>Comic Vault</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#071e26">
-    <!-- JSZip for entirely local client-side unzipping of CBZ files -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root {
@@ -33,7 +32,6 @@
             overflow: hidden;
         }
 
-        /* Comic Canvas Wrapper */
         #viewer-container {
             position: relative;
             width: 100%;
@@ -52,7 +50,6 @@
             transform-origin: center center;
         }
 
-        /* Interactive Navigation Zones */
         .tap-zone {
             position: absolute;
             top: 0;
@@ -63,7 +60,18 @@
         #left-zone { left: 0; }
         #right-zone { right: 0; }
 
-        /* OneUI Pill Bottom Navigation Bar */
+        #progress-timeline {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 5px;
+            width: 0%;
+            background: var(--accent-color);
+            z-index: 15;
+            transition: width 0.2s ease;
+        }
+
+        /* Bottom Navigation Pill */
         .bottom-pill-nav {
             position: absolute;
             bottom: 24px;
@@ -104,13 +112,13 @@
             background: var(--accent-color);
         }
 
-        /* Sliding Shelf Component */
+        /* Slide-up Library Shelf */
         .shelf-overlay {
             position: fixed;
             bottom: 0;
             left: 0;
             width: 100%;
-            height: 40%;
+            height: 60%;
             background: var(--surface-color);
             border-top-left-radius: 28px;
             border-top-right-radius: 28px;
@@ -119,6 +127,8 @@
             transition: transform 0.4s cubic-bezier(0.1, 0.9, 0.2, 1);
             z-index: 30;
             padding: 24px;
+            display: flex;
+            flex-direction: column;
         }
 
         .shelf-overlay.open {
@@ -130,53 +140,83 @@
             height: 5px;
             background: rgba(230, 243, 247, 0.3);
             border-radius: 10px;
-            margin: 0 auto 20px auto;
+            margin: 0 auto 16px auto;
+            flex-shrink: 0;
         }
 
         .shelf-title {
-            font-size: 18px;
-            font-weight: bold;
+            font-size: 20px;
+            font-weight: 700;
             margin-bottom: 16px;
+            flex-shrink: 0;
         }
 
-        .book-shelf {
-            display: flex;
-            gap: 16px;
-            overflow-x: auto;
-            padding-bottom: 10px;
+        /* Folder Action Button */
+        .folder-action-btn {
+            background: var(--accent-color);
+            color: var(--text-color);
+            border: none;
+            padding: 14px 24px;
+            border-radius: 50px;
+            font-size: 14px;
+            font-weight: 600;
+            width: 100%;
+            margin-bottom: 16px;
+            cursor: pointer;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+            transition: background 0.2s;
+            flex-shrink: 0;
         }
 
-        .shelf-item {
-            min-width: 100px;
-            height: 140px;
-            background: var(--bg-color);
-            border-radius: 12px;
+        .folder-action-btn:active {
+            background: #258cb2;
+        }
+
+        /* Dynamic Comic List Container */
+        .comic-list-container {
+            flex-grow: 1;
+            overflow-y: auto;
             display: flex;
             flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-            padding: 10px;
-            font-size: 12px;
-            border: 1px dashed var(--accent-color);
-            position: relative;
+            gap: 10px;
+            padding-bottom: 20px;
         }
 
-        .shelf-item input[type="file"] {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            opacity: 0;
+        .comic-row-item {
+            background: var(--bg-color);
+            padding: 16px;
+            border-radius: 18px;
+            border: 1px solid rgba(26, 105, 133, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             cursor: pointer;
         }
 
-        /* Sliding Page Animation Styles */
-        .slide-out-left { transform: translateX(-100vw) !important; opacity: 0; }
-        .slide-out-right { transform: translateX(100vw) !important; opacity: 0; }
-        .slide-in { animation: slideInEffect 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+        .comic-row-item:active {
+            background: rgba(26, 105, 133, 0.2);
+        }
 
+        .comic-row-title {
+            font-size: 14px;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 85%;
+        }
+
+        .bookmark-badge {
+            font-size: 11px;
+            background: var(--surface-color);
+            padding: 4px 8px;
+            border-radius: 12px;
+            opacity: 0.7;
+        }
+
+        .slide-in { animation: slideInEffect 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
         @keyframes slideInEffect {
-            from { opacity: 0; transform: scale(0.95); }
+            from { opacity: 0; transform: scale(0.96); }
             to { opacity: 1; transform: scale(1); }
         }
     </style>
@@ -186,106 +226,156 @@
     <div id="viewer-container">
         <div id="left-zone" class="tap-zone"></div>
         <div id="right-zone" class="tap-zone"></div>
-        <img id="comic-page" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100%' height='100%' fill='%23071e26'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%231a6985' font-family='sans-serif' font-size='6'>Tap Menu Below to Open CBZ</text></svg>" alt="Comic Page">
+        <img id="comic-page" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100%' height='100%' fill='%23071e26'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%231a6985' font-family='sans-serif' font-size='5'>Tap Library below to map folder</text></svg>" alt="Comic Page">
+        <div id="progress-timeline"></div>
     </div>
 
-    <!-- Bottom Action Pill Menu -->
     <div class="bottom-pill-nav" id="main-nav">
         <button class="nav-btn" onclick="toggleShelf(true)">Library</button>
         <span id="page-indicator" style="font-size: 13px; font-weight: bold; opacity: 0.8;">0 / 0</span>
         <button class="nav-btn" onclick="toggleNavVisibility()">Hide</button>
     </div>
 
-    <!-- Slide-Up Shelf Compartment -->
     <div class="shelf-overlay" id="library-shelf">
         <div class="shelf-handle" onclick="toggleShelf(false)"></div>
-        <div class="shelf-title">Recent Books</div>
-        <div class="book-shelf" id="shelf-slots">
-            <!-- Slot 1 -->
-            <div class="shelf-item" id="slot-0">
-                <span>Open CBZ</span>
-                <input type="file" accept=".cbz" onchange="loadComic(this, 0)">
+        <div class="shelf-title" id="shelf-headline">Comic Vault</div>
+        
+        <button class="folder-action-btn" id="folder-ctrl" onclick="handleFolderAction()">Select Comic Folder</button>
+        
+        <div class="comic-list-container" id="comic-list">
             </div>
-            <!-- Slot 2 -->
-            <div class="shelf-item" id="slot-1">
-                <span>Open CBZ</span>
-                <input type="file" accept=".cbz" onchange="loadComic(this, 1)">
-            </div>
-            <!-- Slot 3 -->
-            <div class="shelf-item" id="slot-2">
-                <span>Open CBZ</span>
-                <input type="file" accept=".cbz" onchange="loadComic(this, 2)">
-            </div>
-        </div>
     </div>
 
     <script>
         let currentComicData = { name: "", pages: [], currentIndex: 0 };
+        let comicFilesMap = {}; 
+        let savedFolderHandle = null;
         let isZoomed = false;
         let lastTapTime = 0;
+        let db = null;
 
-        // Register Service Worker for strict offline usage
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js').catch(err => console.log("SW registration skipped locally"));
-        }
+        // Secure DB Setup to cache directory references
+        const dbRequest = indexedDB.open("ComicVaultFolderStorage", 1);
+        dbRequest.onupgradeneeded = (e) => {
+            e.target.result.createObjectStore("settings");
+        };
+        dbRequest.onsuccess = (e) => {
+            db = e.target.result;
+            checkSavedFolder();
+        };
 
-        // Toggle Floating UI Elements
         function toggleShelf(show) {
             document.getElementById('library-shelf').classList.toggle('open', show);
         }
 
         function toggleNavVisibility() {
-            const nav = document.getElementById('main-nav');
-            nav.classList.add('hidden');
+            document.getElementById('main-nav').classList.add('hidden');
         }
 
-        // Show navigation bar back up if you tap center zone
         document.getElementById('viewer-container').addEventListener('click', (e) => {
             if(e.target.className !== 'tap-zone') {
-                const nav = document.getElementById('main-nav');
-                if (nav.classList.contains('hidden')) {
-                    nav.classList.remove('hidden');
-                }
+                document.getElementById('main-nav').classList.remove('hidden');
             }
         });
 
-        // Parse CBZ completely in browser storage
-        async function loadComic(input, slotIndex) {
-            const file = input.files[0];
-            if (!file) return;
+        // Pull stored folder keys
+        function checkSavedFolder() {
+            const tx = db.transaction(["settings"], "readonly");
+            const req = tx.objectStore("settings").get("dirHandle");
+            req.onsuccess = () => {
+                if (req.result) {
+                    savedFolderHandle = req.result;
+                    document.getElementById("folder-ctrl").innerText = "🔓 Tap to Unlock Folder";
+                    document.getElementById("folder-ctrl").style.background = "#1a6985";
+                }
+            };
+        }
+
+        async function handleFolderAction() {
+            if (savedFolderHandle) {
+                const opts = { mode: 'read' };
+                if (await savedFolderHandle.requestPermission(opts) === 'granted') {
+                    scanDirectory(savedFolderHandle);
+                }
+            } else {
+                try {
+                    const handle = await window.showDirectoryPicker();
+                    savedFolderHandle = handle;
+                    
+                    const tx = db.transaction(["settings"], "readwrite");
+                    tx.objectStore("settings").put(handle, "dirHandle");
+                    
+                    scanDirectory(handle);
+                } catch (err) {
+                    console.log("Folder choosing cancelled");
+                }
+            }
+        }
+
+        async function scanDirectory(handle) {
+            const listContainer = document.getElementById("comic-list");
+            listContainer.innerHTML = ""; 
+            comicFilesMap = {}; 
+
+            document.getElementById("folder-ctrl").innerText = "🔄 Resync Folder";
+            document.getElementById("folder-ctrl").style.background = "rgba(15, 60, 76, 0.6)";
+            document.getElementById("shelf-headline").innerText = `Comic Vault (${handle.name})`;
+
+            for await (const entry of handle.values()) {
+                if (entry.kind === 'file' && /\.(cbz)$/i.test(entry.name)) {
+                    comicFilesMap[entry.name] = entry;
+                    
+                    const savedPage = localStorage.getItem(`bookmark_${entry.name}`);
+                    const progressText = savedPage ? `p. ${parseInt(savedPage, 10) + 1}` : 'Unread';
+
+                    const row = document.createElement("div");
+                    row.className = "comic-row-item";
+                    row.onclick = () => loadComicFile(entry.name);
+                    row.innerHTML = `
+                        <span class="comic-row-title">${entry.name}</span>
+                        <span class="bookmark-badge" id="badge-${btoa(entry.name).replace(/=/g, '')}">${progressText}</span>
+                    `;
+                    listContainer.appendChild(row);
+                }
+            }
+            
+            if (Object.keys(comicFilesMap).length === 0) {
+                listContainer.innerHTML = `<div style="text-align:center; opacity:0.5; margin-top:30px;">No .cbz files found in this folder.</div>`;
+            }
+        }
+
+        async function loadComicFile(filename) {
+            const entry = comicFilesMap[filename];
+            if (!entry) return;
 
             toggleShelf(false);
-            currentComicData.name = file.name;
+            currentComicData.name = filename;
             currentComicData.pages = [];
-            
+
             try {
+                const file = await entry.getFile();
                 const zip = await JSZip.loadAsync(file);
                 const fileEntries = [];
-                
+
                 zip.forEach((relativePath, zipEntry) => {
                     if (!zipEntry.dir && /\.(jfif|jpeg|jpg|png|webp)$/i.test(relativePath)) {
                         fileEntries.push(zipEntry);
                     }
                 });
 
-                // Alphabetical sort ensures page structures align correctly
                 fileEntries.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true, sensitivity: 'base'}));
 
-                for (let entry of fileEntries) {
-                    const blob = await entry.async("blob");
-                    const url = URL.createObjectURL(blob);
-                    currentComicData.pages.push(url);
+                for (let imgEntry of fileEntries) {
+                    const blob = await imgEntry.async("blob");
+                    currentComicData.pages.push(URL.createObjectURL(blob));
                 }
 
-                // Restore bookmark if matching file exists
-                const savedPage = localStorage.getItem(`bookmark_${file.name}`);
+                const savedPage = localStorage.getItem(`bookmark_${filename}`);
                 currentComicData.currentIndex = savedPage ? parseInt(savedPage, 10) : 0;
 
                 renderPage();
-                updateShelfUI(slotIndex, file.name);
-
             } catch (err) {
-                alert("Error reading parsing engine data: " + err.message);
+                alert("Error unpacking comic layout: " + err.message);
             }
         }
 
@@ -297,13 +387,21 @@
             img.src = currentComicData.pages[currentComicData.currentIndex];
             img.classList.add('slide-in');
 
-            document.getElementById('page-indicator').innerText = `${currentComicData.currentIndex + 1} / ${currentComicData.pages.length}`;
+            const totalPages = currentComicData.pages.length;
+            const currentNumber = currentComicData.currentIndex + 1;
+            document.getElementById('page-indicator').innerText = `${currentNumber} / ${totalPages}`;
             
-            // Save bookmark state locally
+            const progressPercent = (currentNumber / totalPages) * 100;
+            document.getElementById('progress-timeline').style.width = `${progressPercent}%`;
+
             localStorage.setItem(`bookmark_${currentComicData.name}`, currentComicData.currentIndex);
+            
+            const safeId = btoa(currentComicData.name).replace(/=/g, '');
+            const badge = document.getElementById(`badge-${safeId}`);
+            if(badge) badge.innerText = `p. ${currentNumber}`;
         }
 
-        // Navigation Zones Touch Logic
+        // Stepper Controls
         document.getElementById('right-zone').addEventListener('click', () => {
             if (currentComicData.currentIndex < currentComicData.pages.length - 1) {
                 currentComicData.currentIndex++;
@@ -318,30 +416,20 @@
             }
         });
 
-        // Double Tap Zoom Logic
+        // Double Tap Zoom Engine
         document.getElementById('viewer-container').addEventListener('click', (e) => {
             if(e.target.id === 'comic-page') {
                 const currentTime = new Date().getTime();
                 const tapLength = currentTime - lastTapTime;
                 if (tapLength < 300 && tapLength > 0) {
                     const img = document.getElementById('comic-page');
-                    if (!isZoomed) {
-                        img.style.transform = 'scale(2)';
-                        isZoomed = true;
-                    } else {
-                        img.style.transform = 'scale(1)';
-                        isZoomed = false;
-                    }
+                    img.style.transform = !isZoomed ? 'scale(2)' : 'scale(1)';
+                    isZoomed = !isZoomed;
                     e.preventDefault();
                 }
                 lastTapTime = currentTime;
             }
         });
-
-        function updateShelfUI(slot, title) {
-            const truncatedTitle = title.length > 15 ? title.substring(0,12) + "..." : title;
-            document.getElementById(`slot-${slot}`).querySelector('span').innerText = truncatedTitle;
-        }
     </script>
 </body>
 </html>
