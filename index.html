@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nexus Comic Reader</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#071e26">
+    <!-- JSZip for entirely local client-side unzipping of CBZ files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #071e26;
+            --surface-color: #0f3c4c;
+            --accent-color: #1a6985;
+            --text-color: #e6f3f7;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        /* Comic Canvas Wrapper */
+        #viewer-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        #comic-page {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+            transform-origin: center center;
+        }
+
+        /* Interactive Navigation Zones */
+        .tap-zone {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            width: 25%;
+            z-index: 10;
+        }
+        #left-zone { left: 0; }
+        #right-zone { right: 0; }
+
+        /* OneUI Pill Bottom Navigation Bar */
+        .bottom-pill-nav {
+            position: absolute;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 60, 76, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 12px 24px;
+            border-radius: 100px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(26, 105, 133, 0.2);
+            z-index: 20;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+
+        .bottom-pill-nav.hidden {
+            transform: translate(-50%, 100px);
+            opacity: 0;
+        }
+
+        .nav-btn {
+            background: none;
+            border: none;
+            color: var(--text-color);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 8px 16px;
+            border-radius: 50px;
+            transition: background 0.2s;
+        }
+
+        .nav-btn:active {
+            background: var(--accent-color);
+        }
+
+        /* Sliding Shelf Component */
+        .shelf-overlay {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 40%;
+            background: var(--surface-color);
+            border-top-left-radius: 28px;
+            border-top-right-radius: 28px;
+            box-shadow: 0 -8px 32px rgba(0,0,0,0.4);
+            transform: translateY(100%);
+            transition: transform 0.4s cubic-bezier(0.1, 0.9, 0.2, 1);
+            z-index: 30;
+            padding: 24px;
+        }
+
+        .shelf-overlay.open {
+            transform: translateY(0);
+        }
+
+        .shelf-handle {
+            width: 40px;
+            height: 5px;
+            background: rgba(230, 243, 247, 0.3);
+            border-radius: 10px;
+            margin: 0 auto 20px auto;
+        }
+
+        .shelf-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 16px;
+        }
+
+        .book-shelf {
+            display: flex;
+            gap: 16px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+        }
+
+        .shelf-item {
+            min-width: 100px;
+            height: 140px;
+            background: var(--bg-color);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 10px;
+            font-size: 12px;
+            border: 1px dashed var(--accent-color);
+            position: relative;
+        }
+
+        .shelf-item input[type="file"] {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        /* Sliding Page Animation Styles */
+        .slide-out-left { transform: translateX(-100vw) !important; opacity: 0; }
+        .slide-out-right { transform: translateX(100vw) !important; opacity: 0; }
+        .slide-in { animation: slideInEffect 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+        @keyframes slideInEffect {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="viewer-container">
+        <div id="left-zone" class="tap-zone"></div>
+        <div id="right-zone" class="tap-zone"></div>
+        <img id="comic-page" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100%' height='100%' fill='%23071e26'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%231a6985' font-family='sans-serif' font-size='6'>Tap Menu Below to Open CBZ</text></svg>" alt="Comic Page">
+    </div>
+
+    <!-- Bottom Action Pill Menu -->
+    <div class="bottom-pill-nav" id="main-nav">
+        <button class="nav-btn" onclick="toggleShelf(true)">Library</button>
+        <span id="page-indicator" style="font-size: 13px; font-weight: bold; opacity: 0.8;">0 / 0</span>
+        <button class="nav-btn" onclick="toggleNavVisibility()">Hide</button>
+    </div>
+
+    <!-- Slide-Up Shelf Compartment -->
+    <div class="shelf-overlay" id="library-shelf">
+        <div class="shelf-handle" onclick="toggleShelf(false)"></div>
+        <div class="shelf-title">Recent Books</div>
+        <div class="book-shelf" id="shelf-slots">
+            <!-- Slot 1 -->
+            <div class="shelf-item" id="slot-0">
+                <span>Open CBZ</span>
+                <input type="file" accept=".cbz" onchange="loadComic(this, 0)">
+            </div>
+            <!-- Slot 2 -->
+            <div class="shelf-item" id="slot-1">
+                <span>Open CBZ</span>
+                <input type="file" accept=".cbz" onchange="loadComic(this, 1)">
+            </div>
+            <!-- Slot 3 -->
+            <div class="shelf-item" id="slot-2">
+                <span>Open CBZ</span>
+                <input type="file" accept=".cbz" onchange="loadComic(this, 2)">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentComicData = { name: "", pages: [], currentIndex: 0 };
+        let isZoomed = false;
+        let lastTapTime = 0;
+
+        // Register Service Worker for strict offline usage
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').catch(err => console.log("SW registration skipped locally"));
+        }
+
+        // Toggle Floating UI Elements
+        function toggleShelf(show) {
+            document.getElementById('library-shelf').classList.toggle('open', show);
+        }
+
+        function toggleNavVisibility() {
+            const nav = document.getElementById('main-nav');
+            nav.classList.add('hidden');
+        }
+
+        // Show navigation bar back up if you tap center zone
+        document.getElementById('viewer-container').addEventListener('click', (e) => {
+            if(e.target.className !== 'tap-zone') {
+                const nav = document.getElementById('main-nav');
+                if (nav.classList.contains('hidden')) {
+                    nav.classList.remove('hidden');
+                }
+            }
+        });
+
+        // Parse CBZ completely in browser storage
+        async function loadComic(input, slotIndex) {
+            const file = input.files[0];
+            if (!file) return;
+
+            toggleShelf(false);
+            currentComicData.name = file.name;
+            currentComicData.pages = [];
+            
+            try {
+                const zip = await JSZip.loadAsync(file);
+                const fileEntries = [];
+                
+                zip.forEach((relativePath, zipEntry) => {
+                    if (!zipEntry.dir && /\.(jfif|jpeg|jpg|png|webp)$/i.test(relativePath)) {
+                        fileEntries.push(zipEntry);
+                    }
+                });
+
+                // Alphabetical sort ensures page structures align correctly
+                fileEntries.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true, sensitivity: 'base'}));
+
+                for (let entry of fileEntries) {
+                    const blob = await entry.async("blob");
+                    const url = URL.createObjectURL(blob);
+                    currentComicData.pages.push(url);
+                }
+
+                // Restore bookmark if matching file exists
+                const savedPage = localStorage.getItem(`bookmark_${file.name}`);
+                currentComicData.currentIndex = savedPage ? parseInt(savedPage, 10) : 0;
+
+                renderPage();
+                updateShelfUI(slotIndex, file.name);
+
+            } catch (err) {
+                alert("Error reading parsing engine data: " + err.message);
+            }
+        }
+
+        function renderPage() {
+            if (currentComicData.pages.length === 0) return;
+            const img = document.getElementById('comic-page');
+            
+            img.classList.remove('slide-in');
+            img.src = currentComicData.pages[currentComicData.currentIndex];
+            img.classList.add('slide-in');
+
+            document.getElementById('page-indicator').innerText = `${currentComicData.currentIndex + 1} / ${currentComicData.pages.length}`;
+            
+            // Save bookmark state locally
+            localStorage.setItem(`bookmark_${currentComicData.name}`, currentComicData.currentIndex);
+        }
+
+        // Navigation Zones Touch Logic
+        document.getElementById('right-zone').addEventListener('click', () => {
+            if (currentComicData.currentIndex < currentComicData.pages.length - 1) {
+                currentComicData.currentIndex++;
+                renderPage();
+            }
+        });
+
+        document.getElementById('left-zone').addEventListener('click', () => {
+            if (currentComicData.currentIndex > 0) {
+                currentComicData.currentIndex--;
+                renderPage();
+            }
+        });
+
+        // Double Tap Zoom Logic
+        document.getElementById('viewer-container').addEventListener('click', (e) => {
+            if(e.target.id === 'comic-page') {
+                const currentTime = new Date().getTime();
+                const tapLength = currentTime - lastTapTime;
+                if (tapLength < 300 && tapLength > 0) {
+                    const img = document.getElementById('comic-page');
+                    if (!isZoomed) {
+                        img.style.transform = 'scale(2)';
+                        isZoomed = true;
+                    } else {
+                        img.style.transform = 'scale(1)';
+                        isZoomed = false;
+                    }
+                    e.preventDefault();
+                }
+                lastTapTime = currentTime;
+            }
+        });
+
+        function updateShelfUI(slot, title) {
+            const truncatedTitle = title.length > 15 ? title.substring(0,12) + "..." : title;
+            document.getElementById(`slot-${slot}`).querySelector('span').innerText = truncatedTitle;
+        }
+    </script>
+</body>
+</html>
